@@ -36,6 +36,10 @@ agent-env bench score runs/week
 `sail_vm`, `tensorlake`, `tenki`, `vercel`, `boxd`, `daytona` and `boat`. `local` and smol machines run on your own
 hardware: you can measure them, but they are never ranked.
 
+For a CI smoke test, dispatch **Sandbox Index smoke** after configuring `MODAL_TOKEN_ID` and
+`MODAL_TOKEN_SECRET` as workflow secrets. It runs 20 samples each of S1 and R1 on `modal_vm`.
+The `modal-vm-smoke` artifact contains the run manifest, sample rows, and JSON statistics.
+
 ## What is measured
 
 Eleven metrics in four sub-indices. Each scores 0–100 against fixed reference points: times on a log scale, success
