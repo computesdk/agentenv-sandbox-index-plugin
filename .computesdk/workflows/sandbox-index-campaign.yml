@@ -1,0 +1,112 @@
+name: Sandbox Index campaign
+# computesdk:secrets=NSC_TOKEN
+# computesdk:secrets-env=declared
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: Campaign plan JSON (leave blank to use .computesdk/campaign.json)
+        type: string
+        default: ""
+      window:
+        description: UTC hour to measure (YYYY-MM-DDTHH:00:00Z)
+        type: string
+        required: true
+  # Enable only for an approved campaign; see README.
+  # schedule:
+  #   - cron: "45 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: [ubuntu-latest, "computesdk:namespace"]
+    timeout-minutes: 10
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      window: ${{ steps.plan.outputs.window }}
+      providers: ${{ steps.vault.outputs.providers }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Select campaign window
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PLAN_INPUT: ${{ inputs.plan }}
+          WINDOW_INPUT: ${{ inputs.window }}
+        run: PYTHONPATH=src python3 .computesdk/scripts/select-campaign.py
+      - name: Install Namespace CLI
+        if: steps.plan.outputs.window != ''
+        shell: bash
+        run: |
+          export NS_INSTALL_DIR="$RUNNER_TEMP/namespace-bin"
+          curl -fsSL https://get.namespace.so/cloud/install.sh | sh -s -- --version 0.0.550
+          printf '%s\n' "$NS_INSTALL_DIR" >> "$GITHUB_PATH"
+      - name: Verify planned provider and storage credentials are present
+        if: steps.plan.outputs.window != ''
+        id: vault
+        shell: bash
+        env:
+          PLAN: ${{ steps.plan.outputs.plan }}
+          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+        run: |
+          requested=$(jq -r '.providers | join(",")' <<<"$PLAN")
+          selected=$(bash .computesdk/scripts/load-vault-secrets.sh list-campaign "$requested")
+          if ! jq -e --argjson selected "$selected" '(.providers | sort) == ($selected | sort)' <<<"$PLAN" >/dev/null; then
+            echo "Not all planned providers have Namespace Vault credentials" >&2
+            exit 1
+          fi
+          printf 'providers=%s\n' "$selected" >> "$GITHUB_OUTPUT"
+
+  campaign:
+    name: Campaign (${{ matrix.backend }})
+    needs: select
+    if: needs.select.outputs.providers != ''
+    runs-on: [ubuntu-latest, "computesdk:namespace"]
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ${{ fromJSON(needs.select.outputs.providers || '[]') }}
+    env:
+      PLAN: ${{ needs.select.outputs.plan }}
+      WINDOW: ${{ needs.select.outputs.window }}
+      PROVIDER: ${{ matrix.backend }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ fromJSON(needs.select.outputs.plan).revision }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install the pinned benchmark
+        shell: bash
+        run: |
+          revision=$(jq -er '.revision' <<<"$PLAN")
+          test "$(git rev-parse HEAD)" = "$revision"
+          extra=$(jq -er --arg name "$PROVIDER" '.[$name].extra // ""' .computesdk/providers.json)
+          requirement=agentenv-framework
+          if [[ -n "$extra" ]]; then
+            requirement+="[$extra]"
+          fi
+          python -m pip install "${requirement}==0.9.1564" '.[campaign]'
+      - name: Install Namespace CLI
+        shell: bash
+        run: |
+          export NS_INSTALL_DIR="$RUNNER_TEMP/namespace-bin"
+          curl -fsSL https://get.namespace.so/cloud/install.sh | sh -s -- --version 0.0.550
+          printf '%s\n' "$NS_INSTALL_DIR" >> "$GITHUB_PATH"
+      - name: Measure and checkpoint startup and reliability samples
+        shell: bash
+        env:
+          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+        run: bash .computesdk/scripts/load-vault-secrets.sh exec-campaign "$PROVIDER" bash .computesdk/scripts/run-campaign.sh
