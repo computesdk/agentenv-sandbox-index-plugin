@@ -36,10 +36,14 @@ agent-env bench score runs/week
 `sail_vm`, `tensorlake`, `tenki`, `vercel`, `boxd`, `daytona` and `boat`. `local` and smol machines run on your own
 hardware: you can measure them, but they are never ranked.
 
-In ComputeSDK Actions, dispatch **Sandbox Index smoke** from a trusted ref. The workflow uses
-the `NSC_TOKEN` Actions secret to load `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` from Namespace
-Vault, then runs 20 samples each of S1 and R1 on `modal_vm`.
-The `modal-vm-smoke` artifact contains the run manifest, sample rows, and JSON statistics.
+In ComputeSDK Actions, dispatch **Sandbox Index smoke** from a trusted ref. Leave `providers`
+blank to run all backends with the required Namespace Vault entries, or pass a comma-separated
+subset such as `modal_vm,e2b`. The preflight logs missing credential names; each selected job
+loads only its own provider credentials via the `NSC_TOKEN` Actions secret.
+
+The default is 20 samples each of S1 and R1 per provider. E2B prepares its size-specific template
+before sampling. Each `<provider>-smoke` artifact contains the run manifest, sample rows, and JSON
+statistics. Check the rows or score for probe failures even if the workflow job completed.
 
 ## What is measured
 

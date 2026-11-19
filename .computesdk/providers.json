@@ -1,0 +1,45 @@
+{
+  "modal_vm": {
+    "secrets": {"MODAL_TOKEN_ID": null, "MODAL_TOKEN_SECRET": null}
+  },
+  "e2b": {
+    "secrets": {"E2B_API_KEY": "api_key"},
+    "config": {"base_template": "base"}
+  },
+  "daytona": {
+    "extra": "daytona",
+    "secrets": {"DAYTONA_API_KEY": "api_key"}
+  },
+  "modal": {
+    "secrets": {"MODAL_TOKEN_ID": null, "MODAL_TOKEN_SECRET": null},
+    "image": "docker.io/library/buildpack-deps@sha256:58021c2a0204361b62a23d2e0244d144d74c29af2d678e2a1f7e6611885d6949"
+  },
+  "vercel": {
+    "extra": "vercel",
+    "secrets": {"VERCEL_TOKEN": "token", "VERCEL_TEAM_ID": "team_id", "VERCEL_PROJECT_ID": "project_id"}
+  },
+  "coreweave": {
+    "extra": "coreweave",
+    "secrets": {"COREWEAVE_API_KEY": "api_key"}
+  },
+  "tensorlake": {
+    "extra": "tensorlake",
+    "secrets": {"TENSORLAKE_API_KEY": "api_key"}
+  },
+  "tenki": {
+    "extra": "tenki",
+    "secrets": {"TENKI_API_KEY": "api_key"}
+  },
+  "sail_vm": {
+    "extra": "sail",
+    "secrets": {"SAIL_API_KEY": "api_key"}
+  },
+  "boxd": {
+    "extra": "boxd",
+    "secrets": {"BOXD_API_KEY": "api_key"}
+  },
+  "boat": {
+    "extra": "boat",
+    "secrets": {"BOAT_API_KEY": "api_key"}
+  }
+}

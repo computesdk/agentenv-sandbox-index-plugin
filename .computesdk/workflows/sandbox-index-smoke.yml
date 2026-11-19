@@ -1,15 +1,67 @@
 name: Sandbox Index smoke
+# computesdk:secrets=NSC_TOKEN
+# computesdk:secrets-env=declared
 
 on:
   workflow_dispatch:
+    inputs:
+      providers:
+        description: Comma-separated AgentEnv backends (blank runs all configured backends)
+        type: string
+        default: ""
+      samples:
+        description: Samples per metric (1–20)
+        type: number
+        default: 20
 
 permissions:
   contents: read
 
 jobs:
-  modal-vm:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      providers: ${{ steps.vault.outputs.providers }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install Namespace CLI
+        shell: bash
+        run: |
+          export NS_INSTALL_DIR="$RUNNER_TEMP/namespace-bin"
+          curl -fsSL https://get.namespace.so/cloud/install.sh | sh -s -- --version 0.0.550
+          printf '%s\n' "$NS_INSTALL_DIR" >> "$GITHUB_PATH"
+      - name: Select providers with credentials
+        id: vault
+        shell: bash
+        env:
+          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+          PROVIDERS: ${{ inputs.providers }}
+          SAMPLES: ${{ inputs.samples }}
+        run: |
+          if [[ ! "$SAMPLES" =~ ^([1-9]|1[0-9]|20)$ ]]; then
+            echo "Samples per metric must be an integer from 1 to 20" >&2
+            exit 1
+          fi
+          selected=$(bash .computesdk/scripts/load-vault-secrets.sh list "$PROVIDERS")
+          printf 'providers=%s\n' "$selected" >> "$GITHUB_OUTPUT"
+          printf 'Selected providers: %s\n' "$selected"
+
+  smoke:
+    name: Smoke (${{ matrix.backend }})
+    needs: select
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        backend: ${{ fromJSON(needs.select.outputs.providers) }}
+    env:
+      PROVIDER: ${{ matrix.backend }}
+      SAMPLES: ${{ inputs.samples }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -18,7 +70,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install AgentEnv and the plugin
-        run: python -m pip install 'agentenv-framework==0.9.1564' .
+        shell: bash
+        run: |
+          extra=$(jq -er --arg name "$PROVIDER" '.[$name].extra // ""' .computesdk/providers.json)
+          requirement=agentenv-framework
+          if [[ -n "$extra" ]]; then
+            requirement+="[$extra]"
+          fi
+          python -m pip install "${requirement}==0.9.1564" .
       - name: Install Namespace CLI
         shell: bash
         run: |
@@ -26,17 +85,24 @@ jobs:
           curl -fsSL https://get.namespace.so/cloud/install.sh | sh -s -- --version 0.0.550
           printf '%s\n' "$NS_INSTALL_DIR" >> "$GITHUB_PATH"
       - name: Run startup and reliability samples
+        shell: bash
         env:
           NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
         run: |
-          bash .computesdk/scripts/load-vault-secrets.sh \
-            agent-env bench sandboxes --providers modal_vm --metrics S1,R1 --samples 20 --out runs/modal_vm
+          bash .computesdk/scripts/load-vault-secrets.sh exec "$PROVIDER" \
+            bash .computesdk/scripts/run-smoke.sh "$PROVIDER" "$SAMPLES"
       - name: Score the samples
-        run: agent-env bench score runs/modal_vm --json > runs/modal_vm/score.json
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          run_dir="runs/$PROVIDER"
+          if [[ -s "$run_dir/rows.jsonl" ]]; then
+            agent-env bench score "$run_dir" --json > "$run_dir/score.json"
+          fi
       - name: Upload benchmark results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: modal-vm-smoke
-          path: runs/modal_vm/
+          name: ${{ matrix.backend }}-smoke
+          path: runs/${{ matrix.backend }}/
           if-no-files-found: ignore
