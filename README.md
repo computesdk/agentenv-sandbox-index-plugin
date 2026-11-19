@@ -45,6 +45,55 @@ The default is 20 samples each of S1 and R1 per provider. E2B prepares its size-
 before sampling. Each `<provider>-smoke` artifact contains the run manifest, sample rows, and JSON
 statistics. Check the rows or score for probe failures even if the workflow job completed.
 
+### Startup and reliability campaigns (ComputeSDK Actions)
+
+Use **Sandbox Index campaign** for the timed S1/R1 preview. Each provider measures one UTC hour per job,
+at the methodology's staggered 6-minute S1 and 5-minute R1 cadence. A completed sample is saved immediately
+to private Tigris. A late runner skips elapsed slots; it does not run them back to back. The workflow pins
+the Namespace runner provider (its account chooses the runner region). Verify region and effective sandbox
+shapes before treating the pilot as comparable publication data.
+
+1. Create a **private** results bucket. In the fork's ComputeSDK Actions vault, set the repo variable
+   `AGENTENV_RESULTS_BUCKET` and repo secrets `AGENTENV_RESULTS_ACCESS_KEY_ID` and
+   `AGENTENV_RESULTS_SECRET_ACCESS_KEY`. Use a dedicated Tigris key scoped to writing that bucket, not
+   the platform's shared key. Provider API keys still come from Namespace Vault through `NSC_TOKEN`.
+2. Save a plan as `.computesdk/campaign.json` or pass compact JSON as the manual `plan` input:
+
+   ```json
+   {
+     "id": "startup-pilot-01",
+     "start": "2027-01-02T12:00:00Z",
+     "hours": 48,
+     "providers": ["boat", "boxd", "daytona", "e2b", "modal", "modal_vm", "sail_vm", "tenki", "vercel"],
+     "revision": "<full reviewed benchmark commit SHA>"
+   }
+   ```
+
+   Use a fresh campaign ID for each new plan. Choose a future UTC hour and a trusted revision containing
+   this workflow's runner. Start with a one-hour, one-provider canary: dispatch from the trusted branch
+   with `window` set to the plan's start, shortly before that hour. Check stored rows, cleanup, and job
+   placement. Don't dispatch overlapping runs for the same campaign window.
+3. For the pilot or full campaign, commit the plan and enable the commented `45 * * * *` schedule in the
+   workflow on the watched default branch. Each fire selects the following UTC hour from
+   `COMPUTESDK_SCHEDULED_FOR`, allowing 15 minutes for setup; fires outside the plan do not measure.
+   Disable the schedule afterwards. Verify the pilot before using `hours: 168` for a full week.
+
+After the last window's jobs finish, use a **separate read-only bucket key**. From the pinned checkout,
+install the plugin and download the campaign prefix into an empty directory to rebuild the raw runs,
+coverage, and scores. Use the original plan file, including for a plan passed via manual dispatch:
+
+```bash
+python -m pip install .
+aws --endpoint-url https://t3.storage.dev --region auto s3 sync \
+  "s3://$AGENTENV_RESULTS_BUCKET/sandbox-index/$CAMPAIGN_ID/" downloaded-checkpoints/
+python -m agentenv_sandbox_index.campaign collect .computesdk/campaign.json downloaded-checkpoints/ campaign-results/
+```
+
+Checkpoints never replace an existing sample slot. `collect` exits nonzero when slots are missing and
+keeps the available results and `coverage.json`; a collected sample may still have failed or been discarded.
+Keep checkpoints and collected output private. Review and scrub error text and internal metadata before
+publishing a separate GitHub Release bundle; the campaign workflow does not publish anything.
+
 ## What is measured
 
 Eleven metrics in four sub-indices. Each scores 0–100 against fixed reference points: times on a log scale, success
