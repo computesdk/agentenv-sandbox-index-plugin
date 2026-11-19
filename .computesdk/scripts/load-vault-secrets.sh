@@ -40,8 +40,19 @@ vault list --output json | jq -e '
   | map({key: .name, value: .object_id}) | from_entries
 ' > "$vault_dir/entries.json"
 
+storage_keys='[]'
+if [[ "$mode" == list-campaign || "$mode" == exec-campaign ]]; then
+  storage_keys='["AGENTENV_RESULTS_BUCKET","AGENTENV_RESULTS_ACCESS_KEY_ID","AGENTENV_RESULTS_SECRET_ACCESS_KEY"]'
+  jq -er --argjson required "$storage_keys" '
+    ($required - keys) as $missing
+    | if $missing == [] then true
+      else error("Missing Namespace campaign storage entries: " + ($missing | join(", ")))
+      end
+  ' "$vault_dir/entries.json" >/dev/null
+fi
+
 case "$mode" in
-  list)
+  list|list-campaign)
     report=$(jq -ce --argjson providers "$providers" --slurpfile vault "$vault_dir/entries.json" '
       . as $registry
       | $providers
@@ -54,9 +65,9 @@ case "$mode" in
     ' <<<"$report"
     exit
     ;;
-  exec)
-    jq -er --arg name "$selection" --slurpfile vault "$vault_dir/entries.json" '
-      (.[$name].secrets | keys)[] as $key
+  exec|exec-campaign)
+    jq -er --arg name "$selection" --argjson storage "$storage_keys" --slurpfile vault "$vault_dir/entries.json" '
+      (((.[$name].secrets | keys) + $storage) | unique)[] as $key
       | if $vault[0][$key] then "\($key)=\($vault[0][$key])"
         else error("Missing Namespace vault entry: " + $key)
         end

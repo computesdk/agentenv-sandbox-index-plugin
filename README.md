@@ -53,10 +53,11 @@ to private Tigris. A late runner skips elapsed slots; it does not run them back 
 the Namespace runner provider (its account chooses the runner region). Verify region and effective sandbox
 shapes before treating the pilot as comparable publication data.
 
-1. Create a **private** results bucket. In the fork's ComputeSDK Actions vault, set the repo variable
-   `AGENTENV_RESULTS_BUCKET` and repo secrets `AGENTENV_RESULTS_ACCESS_KEY_ID` and
-   `AGENTENV_RESULTS_SECRET_ACCESS_KEY`. Use a dedicated Tigris key scoped to writing that bucket, not
-   the platform's shared key. Provider API keys still come from Namespace Vault through `NSC_TOKEN`.
+1. Create a **private** Tigris results bucket. In Namespace Vault, set `AGENTENV_RESULTS_BUCKET` to
+   its name and add `AGENTENV_RESULTS_ACCESS_KEY_ID` and `AGENTENV_RESULTS_SECRET_ACCESS_KEY` for a
+   dedicated key scoped to writing that bucket. Do not reuse the shared storage benchmark key.
+   The workflow uses `NSC_TOKEN` from ComputeSDK Actions to load those entries and the selected
+   provider's credentials from Namespace Vault.
 2. Save a plan as `.computesdk/campaign.json` or pass compact JSON as the manual `plan` input:
 
    ```json

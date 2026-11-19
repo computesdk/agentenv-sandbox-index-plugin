@@ -1,5 +1,5 @@
 name: Sandbox Index campaign
-# computesdk:secrets=NSC_TOKEN,AGENTENV_RESULTS_ACCESS_KEY_ID,AGENTENV_RESULTS_SECRET_ACCESS_KEY
+# computesdk:secrets=NSC_TOKEN
 # computesdk:secrets-env=declared
 
 on:
@@ -50,7 +50,7 @@ jobs:
           export NS_INSTALL_DIR="$RUNNER_TEMP/namespace-bin"
           curl -fsSL https://get.namespace.so/cloud/install.sh | sh -s -- --version 0.0.550
           printf '%s\n' "$NS_INSTALL_DIR" >> "$GITHUB_PATH"
-      - name: Verify all planned providers have credentials
+      - name: Verify planned provider and storage credentials are present
         if: steps.plan.outputs.window != ''
         id: vault
         shell: bash
@@ -59,7 +59,7 @@ jobs:
           NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
         run: |
           requested=$(jq -r '.providers | join(",")' <<<"$PLAN")
-          selected=$(bash .computesdk/scripts/load-vault-secrets.sh list "$requested")
+          selected=$(bash .computesdk/scripts/load-vault-secrets.sh list-campaign "$requested")
           if ! jq -e --argjson selected "$selected" '(.providers | sort) == ($selected | sort)' <<<"$PLAN" >/dev/null; then
             echo "Not all planned providers have Namespace Vault credentials" >&2
             exit 1
@@ -109,11 +109,4 @@ jobs:
         shell: bash
         env:
           NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
-          AGENTENV_RESULTS_BUCKET: ${{ vars.AGENTENV_RESULTS_BUCKET }}
-          AGENTENV_RESULTS_ACCESS_KEY_ID: ${{ secrets.AGENTENV_RESULTS_ACCESS_KEY_ID }}
-          AGENTENV_RESULTS_SECRET_ACCESS_KEY: ${{ secrets.AGENTENV_RESULTS_SECRET_ACCESS_KEY }}
-        run: |
-          : "${AGENTENV_RESULTS_BUCKET:?Set the repo's private results bucket variable}"
-          : "${AGENTENV_RESULTS_ACCESS_KEY_ID:?Set the repo's campaign storage access key}"
-          : "${AGENTENV_RESULTS_SECRET_ACCESS_KEY:?Set the repo's campaign storage secret key}"
-          bash .computesdk/scripts/load-vault-secrets.sh exec "$PROVIDER" bash .computesdk/scripts/run-campaign.sh
+        run: bash .computesdk/scripts/load-vault-secrets.sh exec-campaign "$PROVIDER" bash .computesdk/scripts/run-campaign.sh
