@@ -19,14 +19,18 @@ jobs:
           python-version: "3.12"
       - name: Install AgentEnv and the plugin
         run: python -m pip install 'agentenv-framework==0.9.1564' .
+      - name: Install Namespace CLI
+        shell: bash
+        run: |
+          export NS_INSTALL_DIR="$RUNNER_TEMP/namespace-bin"
+          curl -fsSL https://get.namespace.so/cloud/install.sh | sh -s -- --version 0.0.550
+          printf '%s\n' "$NS_INSTALL_DIR" >> "$GITHUB_PATH"
       - name: Run startup and reliability samples
         env:
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
         run: |
-          : "${MODAL_TOKEN_ID:?Set secret MODAL_TOKEN_ID before dispatching}"
-          : "${MODAL_TOKEN_SECRET:?Set secret MODAL_TOKEN_SECRET before dispatching}"
-          agent-env bench sandboxes --providers modal_vm --metrics S1,R1 --samples 20 --out runs/modal_vm
+          bash .computesdk/scripts/load-vault-secrets.sh \
+            agent-env bench sandboxes --providers modal_vm --metrics S1,R1 --samples 20 --out runs/modal_vm
       - name: Score the samples
         run: agent-env bench score runs/modal_vm --json > runs/modal_vm/score.json
       - name: Upload benchmark results
